@@ -2,7 +2,7 @@
 //|                                              NeoEA_Signal.mq5    |
 //|                         NeoEA 系 · 多品种机会信号面板             |
 //+------------------------------------------------------------------+
-#define Version "1.23"
+#define Version "1.30"
 #define EAName  "NeoEA_Signal"
 
 #property copyright "NeoEA_Signal"
@@ -26,6 +26,30 @@ const string OBJ_BTN_CLR  = "NeoEA_Signal_CLR";
 const string OBJ_BG       = "NeoEA_Signal_BG";
 const string OBJ_TITLE    = "NeoEA_Signal_Title";
 const string OBJ_POS_PREF = "NeoEA_Pos_";
+const int    PANEL_PAD    = 8;
+const int    TF_BTN_W     = 40;
+const int    MA_BTN_W     = 28;
+const int    PNUM_BTN_W   = 22;
+const int    SYM_BTN_W    = 72;
+const int    COL_GAP      = 4;
+const int    COL_M15      = PANEL_PAD;
+const int    COL_M30      = COL_M15 + TF_BTN_W + COL_GAP;
+const int    COL_H4       = COL_M30 + TF_BTN_W + COL_GAP;
+const int    COL_D1       = COL_H4 + TF_BTN_W + COL_GAP;
+const int    COL_MA       = COL_D1 + TF_BTN_W + COL_GAP;
+const int    COL_PNUM     = COL_MA + MA_BTN_W + COL_GAP;
+const int    COL_SYM      = COL_PNUM + PNUM_BTN_W + COL_GAP;
+const int    PANEL_WIDTH  = COL_SYM + SYM_BTN_W + PANEL_PAD;
+const int    PANEL_INNER  = PANEL_WIDTH - PANEL_PAD * 2;
+const color  BTN_BG       = C'58,62,72';
+const color  BTN_BORDER   = C'190,195,205';
+const color  BTN_TEXT     = clrWhite;
+const color  BTN_RELATED  = C'0,130,150';
+const color  BTN_ACTIVE   = clrGold;
+const color  RSI_HIGH     = clrOrangeRed;
+const color  RSI_LOW      = clrDeepSkyBlue;
+const color  RSI_NEUTRAL  = clrWhite;
+const int    BTN_HEIGHT   = 20;
 
 string g_cacheKey[];
 int    g_cacheHandle[];
@@ -274,6 +298,26 @@ bool IsControlButton(const string name)
   }
 
 //+------------------------------------------------------------------+
+// 保留顶部控制栏与背景，清空机会面板/持仓行等动态对象
+bool IsPersistentPanelObject(const string name)
+  {
+   return (IsControlButton(name) || name == OBJ_BG || name == OBJ_TITLE);
+  }
+
+//+------------------------------------------------------------------+
+void ClearDynamicPanelObjects()
+  {
+   int total = ObjectsTotal(0, 0, -1);
+
+   for(int i = total - 1; i >= 0; i--)
+     {
+      string name = ObjectName(0, i, 0, -1);
+      if(!IsPersistentPanelObject(name))
+         ObjectDelete(0, name);
+     }
+  }
+
+//+------------------------------------------------------------------+
 string ResolveChartSymbol(const string rawName)
   {
    string base = rawName;
@@ -378,6 +422,28 @@ bool ParseTfTooltip(const string tooltip, string &symbol, ENUM_TIMEFRAMES &tf)
   }
 
 //+------------------------------------------------------------------+
+bool IsTfTooltip(const string tooltip)
+  {
+   return (StringFind(tooltip, "TF|") == 0);
+  }
+
+//+------------------------------------------------------------------+
+bool IsInfoTooltip(const string tooltip)
+  {
+   return (StringFind(tooltip, "INFO|") == 0);
+  }
+
+//+------------------------------------------------------------------+
+color RsiColor(const double rsi)
+  {
+   if(rsi > 60)
+      return RSI_HIGH;
+   if(rsi < 40)
+      return RSI_LOW;
+   return RSI_NEUTRAL;
+  }
+
+//+------------------------------------------------------------------+
 void HighlightCurrentSymbolButtons()
   {
    int total = ObjectsTotal(0, 0, OBJ_BUTTON);
@@ -389,8 +455,16 @@ void HighlightCurrentSymbolButtons()
          continue;
 
       string sym = ObjectGetString(0, name, OBJPROP_TOOLTIP);
+      if(IsTfTooltip(sym))
+         continue;
+      if(IsInfoTooltip(sym))
+         continue;
       if(sym == _Symbol)
-         ObjectSetInteger(0, name, OBJPROP_BGCOLOR, clrGreenYellow);
+        {
+         ObjectSetInteger(0, name, OBJPROP_BGCOLOR, BTN_ACTIVE);
+         ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, clrWhite);
+         ObjectSetInteger(0, name, OBJPROP_COLOR, clrBlack);
+        }
      }
   }
 
@@ -454,7 +528,7 @@ int OnInit()
    ObjectSetInteger(0, OBJ_BTN_CLR, OBJPROP_XSIZE, 70);
 
    EA = EAName + " v" + Version + " " + _Symbol + " " + GetPeriodName();
-   label(OBJ_TITLE, EA, 50, 10, 5);
+   textBtn(OBJ_TITLE, EA, BTN_TEXT, PANEL_PAD, 5, PANEL_INNER, 10);
 
    PreloadOpportunitySymbols();
 
@@ -565,26 +639,30 @@ void ShowOpportunityPairs()
 //+------------------------------------------------------------------+
 void UpdatePanel()
   {
+   ClearDynamicPanelObjects();
+   n = 1;
+
    RefreshBlockedCurrencies();
    ShowOpportunityPairs();
 
    if(n <= 2)
      {
-      label("hint", "暂无机会品种：持仓涉及货币(如AUDCAD含AUD/CAD)的相关兑均隐藏；请启用报价品种",
-            50, 30, 35);
+      textBtn("hint",
+              "暂无机会品种：持仓涉及货币(如AUDCAD含AUD/CAD)的相关兑均隐藏；请启用报价品种",
+              BTN_TEXT, PANEL_PAD, 35, PANEL_INNER, 9);
      }
    else if(!EnsureSymbolReady(ResolveChartSymbol("EURUSD"), PERIOD_H4, 710))
      {
-      label("hint", "历史数据同步中，请稍候…", 50, 30, 35);
+      textBtn("hint", "历史数据同步中，请稍候…", BTN_TEXT, PANEL_PAD, 35, PANEL_INNER, 10);
      }
    else
       ObjectDelete(0, "hint");
 
    aorders();
 
+   UpdatePanelBackground();
    HighlightCurrentSymbolButtons();
 
-   n = 1;
    ChartRedraw(0);
   }
 
@@ -638,22 +716,29 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
   {
    if(id == CHARTEVENT_OBJECT_CLICK)
      {
-      long objType = ObjectGetInteger(0, sparam, OBJPROP_TYPE);
+      string tooltip = ObjectGetString(0, sparam, OBJPROP_TOOLTIP);
+      string sym;
+      ENUM_TIMEFRAMES tf;
 
-      if(objType == OBJ_LABEL)
+      // 周期按钮: 切换到对应品种与周期
+      if(ParseTfTooltip(tooltip, sym, tf))
         {
-         string tooltip = ObjectGetString(0, sparam, OBJPROP_TOOLTIP);
-         string sym;
-         ENUM_TIMEFRAMES tf;
-
-         if(ParseTfTooltip(tooltip, sym, tf))
-           {
-            OpenSymbolPeriodChart(sym, tf, false);
-            return;
-           }
+         if(ObjectGetInteger(0, sparam, OBJPROP_TYPE) == OBJ_BUTTON)
+            ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+         OpenSymbolPeriodChart(sym, tf, false);
+         return;
         }
 
-      if(objType != OBJ_BUTTON || !ObjectGetInteger(0, sparam, OBJPROP_STATE))
+      // 纯展示文字按钮: 仅复位状态
+      if(IsInfoTooltip(tooltip))
+        {
+         ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+         return;
+        }
+
+      if(ObjectGetInteger(0, sparam, OBJPROP_TYPE) != OBJ_BUTTON)
+         return;
+      if(!ObjectGetInteger(0, sparam, OBJPROP_STATE))
          return;
 
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
@@ -680,7 +765,9 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
          period = TMEXE;
 
       OpenSymbolPeriodChart(sy, period, InpOpenNewTab);
-      ObjectSetInteger(0, sparam, OBJPROP_BGCOLOR, clrGreenYellow);
+      ObjectSetInteger(0, sparam, OBJPROP_BGCOLOR, BTN_ACTIVE);
+      ObjectSetInteger(0, sparam, OBJPROP_BORDER_COLOR, clrWhite);
+      ObjectSetInteger(0, sparam, OBJPROP_COLOR, clrBlack);
      }
 
    if(id == CHARTEVENT_KEYDOWN && getExistChart() == 0)
@@ -711,6 +798,19 @@ int getExistChart()
   }
 
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+void ApplyButtonStyle(const string name, const color textColor, const color bgColor)
+  {
+   ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bgColor);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, BTN_BORDER);
+   ObjectSetString(0, name, OBJPROP_FONT, "Calibri");
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_STATE, false);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 10);
+  }
+
+//+------------------------------------------------------------------+
 void btn(const string objName, const string symbol, int x, int y)
   {
    ObjectDelete(0, objName);
@@ -719,54 +819,51 @@ void btn(const string objName, const string symbol, int x, int y)
    ObjectSetInteger(0, objName, OBJPROP_YDISTANCE, y);
    ObjectSetString(0, objName, OBJPROP_TEXT, symbol);
    ObjectSetString(0, objName, OBJPROP_TOOLTIP, symbol);
-   ObjectSetInteger(0, objName, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, objName, OBJPROP_XSIZE, 80);
-   ObjectSetInteger(0, objName, OBJPROP_YSIZE, 20);
+   ObjectSetInteger(0, objName, OBJPROP_XSIZE, SYM_BTN_W);
+   ObjectSetInteger(0, objName, OBJPROP_YSIZE, BTN_HEIGHT);
+   ObjectSetInteger(0, objName, OBJPROP_FONTSIZE, 10);
 
+   color bg = BTN_BG;
    string sym1 = StringSubstr(_Symbol, 0, 3);
    string sym2 = StringSubstr(_Symbol, 3, 3);
    if(StringFind(symbol, sym1) != -1 || StringFind(symbol, sym2) != -1)
-      ObjectSetInteger(0, objName, OBJPROP_BGCOLOR, clrPaleTurquoise);
+      bg = BTN_RELATED;
+
+   ApplyButtonStyle(objName, BTN_TEXT, bg);
   }
 
 //+------------------------------------------------------------------+
-void label(const string name, const string value, double rsi, int x, int y)
+void textBtn(const string name, const string value, const color cc,
+             const int x, const int y, const int width, const int fontSize,
+             const string tooltip = "")
   {
    ObjectDelete(0, name);
-   ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
-
-   color cc = clrWhite;
-   if(rsi > 60)
-      cc = clrRed;
-   if(rsi < 40)
-      cc = clrBlue;
-
-   int fontSize = 10;
-   if(name == OBJ_TITLE || StringFind(name, "NeoEA_Signal") == 0)
-      fontSize = 12;
-   if(StringFind(name, "txt") != -1)
-      fontSize = 8;
-
-   ObjectSetString(0, name, OBJPROP_TEXT, value);
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
-   ObjectSetString(0, name, OBJPROP_FONT, "Calibri");
-   ObjectSetInteger(0, name, OBJPROP_COLOR, cc);
-   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
-   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-   ObjectSetString(0, name, OBJPROP_TOOLTIP, name);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, width);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, BTN_HEIGHT);
+   ObjectSetString(0, name, OBJPROP_TEXT, value);
+   ObjectSetString(0, name, OBJPROP_TOOLTIP,
+                   tooltip == "" ? "INFO|" + name : tooltip);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ApplyButtonStyle(name, cc, BTN_BG);
   }
 
 //+------------------------------------------------------------------+
-void tfLabel(const string name, const string symbol, ENUM_TIMEFRAMES tf,
-             const string value, double rsi, int x, int y)
+void textBtnRsi(const string name, const string value, const double rsi,
+                const int x, const int y, const int width,
+                const int fontSize = 10, const string tooltip = "")
   {
-   label(name, value, rsi, x, y);
-   ObjectSetString(0, name, OBJPROP_TOOLTIP,
-                   "TF|" + symbol + "|" + IntegerToString((int)tf));
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
+   textBtn(name, value, RsiColor(rsi), x, y, width, fontSize, tooltip);
+  }
+
+//+------------------------------------------------------------------+
+void tfBtn(const string name, const string symbol, ENUM_TIMEFRAMES tf,
+           const string value, double rsi, int x, int y)
+  {
+   textBtnRsi(name, value, rsi, x, y, TF_BTN_W, 10,
+              "TF|" + symbol + "|" + IntegerToString((int)tf));
   }
 
 //+------------------------------------------------------------------+
@@ -777,7 +874,7 @@ void Symb(string sy)
 
    if(sy == "==")
      {
-      label(sy + "==", "", 50, 0, btop + m * n);
+      textBtn(sy + "==", " ", BTN_TEXT, PANEL_PAD, btop + m * n, PANEL_INNER, 8);
       n++;
       return;
      }
@@ -785,7 +882,7 @@ void Symb(string sy)
    if(StringFind(sy, "txt") != -1)
      {
       StringReplace(sy, "txt", "");
-      label("txt" + IntegerToString(n), sy, 50, 30, btop + m * n);
+      textBtn("txt" + IntegerToString(n), sy, BTN_TEXT, PANEL_PAD, btop + m * n, PANEL_INNER, 9);
       n++;
       return;
      }
@@ -801,7 +898,7 @@ void Symb(string sy)
 
    if(!SymbolInfoInteger(resolved, SYMBOL_EXIST))
      {
-      label(sy + "err", sy + " 无此品种", 50, 30, btop + m * n);
+      textBtn(sy + "err", sy + " 无此品种", clrOrange, PANEL_PAD, btop + m * n, PANEL_INNER, 10);
       n++;
       return;
      }
@@ -809,13 +906,13 @@ void Symb(string sy)
    double b = SymbolInfoDouble(resolved, SYMBOL_BID);
 
    double rsi15 = GetRSI(resolved, PERIOD_M15, 8);
-   tfLabel(sy + "M15", resolved, PERIOD_M15, "M15", rsi15, 30, btop + m * n);
+   tfBtn(sy + "M15", resolved, PERIOD_M15, "M15", rsi15, COL_M15, btop + m * n);
    double rsi30 = GetRSI(resolved, PERIOD_M30, 8);
-   tfLabel(sy + "M30", resolved, PERIOD_M30, "M30", rsi30, 80, btop + m * n);
+   tfBtn(sy + "M30", resolved, PERIOD_M30, "M30", rsi30, COL_M30, btop + m * n);
    double rsi4h = GetRSI(resolved, PERIOD_H4, 8);
-   tfLabel(sy + "H4", resolved, PERIOD_H4, "H4", rsi4h, 130, btop + m * n);
+   tfBtn(sy + "H4", resolved, PERIOD_H4, "H4", rsi4h, COL_H4, btop + m * n);
    double rsid1 = GetRSI(resolved, PERIOD_D1, 8);
-   tfLabel(sy + "D1", resolved, PERIOD_D1, "D1", rsid1, 180, btop + m * n);
+   tfBtn(sy + "D1", resolved, PERIOD_D1, "D1", rsid1, COL_D1, btop + m * n);
 
    double cc          = 50;
    double ma          = GetMA(resolved, PERIOD_H4, 700);
@@ -827,10 +924,10 @@ void Symb(string sy)
    if(Ma_Bid_Diff > 1500 && b < ma)
       cc = 0;
 
-   label(sy + "MA", "MA", cc, 230, btop + m * n);
-   label(sy + "pnum", DoubleToString(pnum, 0), 50, 280, btop + m * n);
+   textBtnRsi(sy + "MA", "MA", cc, COL_MA, btop + m * n, MA_BTN_W);
+   textBtn(sy + "pnum", DoubleToString(pnum, 0), BTN_TEXT, COL_PNUM, btop + m * n, PNUM_BTN_W, 10);
 
-   btn(sy, resolved, 320, btop + m * n);
+   btn(sy, resolved, COL_SYM, btop + m * n);
    n++;
   }
 
@@ -845,13 +942,13 @@ void Symb2(const string sy)
    int    btop     = 10;
 
    double rsi15 = GetRSI(resolved, PERIOD_M15, 8);
-   tfLabel(prefix + "M15", resolved, PERIOD_M15, "M15", rsi15, 30, btop + m * n);
+   tfBtn(prefix + "M15", resolved, PERIOD_M15, "M15", rsi15, COL_M15, btop + m * n);
    double rsi30 = GetRSI(resolved, PERIOD_M30, 8);
-   tfLabel(prefix + "M30", resolved, PERIOD_M30, "M30", rsi30, 80, btop + m * n);
+   tfBtn(prefix + "M30", resolved, PERIOD_M30, "M30", rsi30, COL_M30, btop + m * n);
    double rsi4h = GetRSI(resolved, PERIOD_H4, 8);
-   tfLabel(prefix + "H4", resolved, PERIOD_H4, "H4", rsi4h, 130, btop + m * n);
+   tfBtn(prefix + "H4", resolved, PERIOD_H4, "H4", rsi4h, COL_H4, btop + m * n);
    double rsid1 = GetRSI(resolved, PERIOD_D1, 8);
-   tfLabel(prefix + "D1", resolved, PERIOD_D1, "D1", rsid1, 180, btop + m * n);
+   tfBtn(prefix + "D1", resolved, PERIOD_D1, "D1", rsid1, COL_D1, btop + m * n);
 
    double cc          = 50;
    double ma          = GetMA(resolved, PERIOD_H4, 700);
@@ -863,26 +960,23 @@ void Symb2(const string sy)
    if(Ma_Bid_Diff > 1500 && b < ma)
       cc = 0;
 
-   label(prefix + "MA", "MA", cc, 230, btop + m * n);
-   label(prefix + "pnum", DoubleToString(pnum, 0), 50, 280, btop + m * n);
+   textBtnRsi(prefix + "MA", "MA", cc, COL_MA, btop + m * n, MA_BTN_W);
+   textBtn(prefix + "pnum", DoubleToString(pnum, 0), BTN_TEXT, COL_PNUM, btop + m * n, PNUM_BTN_W, 10);
 
-   btn(prefix + "btn", resolved, 320, btop + m * n);
+   btn(prefix + "btn", resolved, COL_SYM, btop + m * n);
    n++;
+  }
+
+//+------------------------------------------------------------------+
+void UpdatePanelBackground()
+  {
+   // 信号面板背景透明，不遮挡 K 线
+   ObjectDelete(0, OBJ_BG);
   }
 
 //+------------------------------------------------------------------+
 void BG()
   {
-   ObjectDelete(0, OBJ_BG);
-   ObjectCreate(0, OBJ_BG, OBJ_LABEL, 0, 0, 0);
-   ObjectSetString(0, OBJ_BG, OBJPROP_TEXT, "g");
-   ObjectSetInteger(0, OBJ_BG, OBJPROP_FONTSIZE, 950);
-   ObjectSetString(0, OBJ_BG, OBJPROP_FONT, "Webdings");
-   ObjectSetInteger(0, OBJ_BG, OBJPROP_COLOR, clrBlack);
-   ObjectSetInteger(0, OBJ_BG, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, OBJ_BG, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-   ObjectSetInteger(0, OBJ_BG, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, OBJ_BG, OBJPROP_XDISTANCE, -780);
-   ObjectSetInteger(0, OBJ_BG, OBJPROP_YDISTANCE, 0);
+   UpdatePanelBackground();
   }
 //+------------------------------------------------------------------+
