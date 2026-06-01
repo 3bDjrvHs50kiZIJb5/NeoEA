@@ -63,7 +63,7 @@ input int    InpMaxAddLevels   = 5;      // 单方向最大持仓笔数(含首�
 input bool   InpUseDynamicStep = true;   // 启用ATR动态网格(波动大则间距放大)
 input ENUM_TIMEFRAMES InpAtrTimeframe = PERIOD_CURRENT; // ATR K线周期(当前=随图表周期;可改H1等)
 input int    InpAtrPeriod      = 1;     // ATR周期
-input double InpAtrMult        = 0.5;    // 网格间距
+input double InpAtrMult        = 0.5;    // 网格间距系数
 input int    InpAtrMinPoints   = 150;    // ATR动态间距下限(point,约$2, 0=不限)
 input int    InpAtrMaxPoints   = 3000;    // ATR动态间距上限(point,约$9, 0=不限)
 
@@ -80,7 +80,7 @@ input group "===== 禁止交易时段(黄金低流动性/点差扩大,服务器�
 // 黄金: 凌晨0~1点亚洲尾段流动性差; 22~23点常遇换日点差扩大
 // 只禁止"新开首单", 已有篮子的止盈/加仓不受影响
 input bool   InpUseNoTradeHours = true;   // 是否启用禁止交易时段
-input string InpNoTradeHours     = "0,1,22,23"; // 禁止开首单的小时(逗号分隔,0-23)
+input string InpNoTradeHours     = "0,1"; // 禁止开首单的小时(逗号分隔,0-23)
 
 //==================================================================
 // 全局变量
