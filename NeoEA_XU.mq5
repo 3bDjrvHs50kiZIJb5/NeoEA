@@ -63,7 +63,7 @@ input int    InpMaxAddLevels   = 5;      // 单方向最大持仓笔数(含首�
 input bool   InpUseDynamicStep = true;   // 启用ATR动态网格(波动大则间距放大)
 input ENUM_TIMEFRAMES InpAtrTimeframe = PERIOD_CURRENT; // ATR K线周期(当前=随图表周期;可改H1等)
 input int    InpAtrPeriod      = 1;     // ATR周期
-input double InpAtrMult        = 0.5;    // 网格间距系数
+input double InpAtrMult        = 1;    // 网格间距系数
 input int    InpAtrMinPoints   = 150;    // ATR动态间距下限(point,约$2, 0=不限)
 input int    InpAtrMaxPoints   = 3000;    // ATR动态间距上限(point,约$9, 0=不限)
 
@@ -75,6 +75,9 @@ input int    InpTrailPoints    = 50;    // 跟踪回撤点数(黄金波动大,�
 input group "===== 全局风控 ====="
 input double InpMaxFloatingLoss = 200.0; // 总浮亏(双向合计)超过此金额($)全平(0=关闭,黄金波动大)
 input bool   InpBlockSharedCurrency = true; // 开首单:账户其它品种与当前品种共用基/报价货币则不开(如持AUDUSD不开USDJPY)
+
+input group "===== 手机推送(MT5 App) ====="
+input bool   InpNotifyOnClose   = true;  // 平仓时推送到手机(工具->选项->通知 填 MetaQuotes ID)
 
 input group "===== 禁止交易时段(黄金低流动性/点差扩大,服务器时间) ====="
 // 黄金: 凌晨0~1点亚洲尾段流动性差; 22~23点常遇换日点差扩大
@@ -854,10 +857,60 @@ string FormatSwapMoney(double v)
 }
 
 //==================================================================
+// 手机推送: SendNotification 正文上限 255 字符
+//==================================================================
+void NotifyClosePush(string text)
+{
+   if(!InpNotifyOnClose || text == "")
+      return;
+
+   if(StringLen(text) > 255)
+      text = StringSubstr(text, 0, 255);
+
+   if(!SendNotification(text))
+      Print("手机推送失败, 请在 MT5 工具->选项->通知 中填写 MetaQuotes ID 并启用推送");
+}
+
+void NotifyCloseDirection(ENUM_POSITION_TYPE dir, const BasketInfo &b, string reason)
+{
+   if(b.count <= 0)
+      return;
+
+   string side = (dir == POSITION_TYPE_BUY) ? "多" : "空";
+   string msg  = StringFormat("NeoEA_XU 平仓\n%s %s %d笔 %.2f手 $%+.2f\n%s",
+                              _Symbol, side, b.count, b.totalLot, b.profit, reason);
+   NotifyClosePush(msg);
+}
+
+void NotifyCloseAll(const BasketInfo &buy, const BasketInfo &sell, string reason)
+{
+   int    totalCount  = buy.count + sell.count;
+   double totalLot    = buy.totalLot + sell.totalLot;
+   double totalProfit = buy.profit + sell.profit;
+   if(totalCount <= 0)
+      return;
+
+   string detail;
+   if(buy.count > 0 && sell.count > 0)
+      detail = StringFormat("多%d+空%d %.2f手", buy.count, sell.count, totalLot);
+   else if(buy.count > 0)
+      detail = StringFormat("多 %d笔 %.2f手", buy.count, buy.totalLot);
+   else
+      detail = StringFormat("空 %d笔 %.2f手", sell.count, sell.totalLot);
+
+   string msg = StringFormat("NeoEA_XU 全平\n%s %s $%+.2f\n%s",
+                             _Symbol, detail, totalProfit, reason);
+   NotifyClosePush(msg);
+}
+
+//==================================================================
 // 平掉本 EA 在当前品种、指定方向的所有持仓
 //==================================================================
 void CloseDirection(ENUM_POSITION_TYPE dir, string reason)
 {
+   BasketInfo b;
+   GatherBasket(dir, b);
+
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       if(!g_posInfo.SelectByIndex(i)) continue;
@@ -871,6 +924,7 @@ void CloseDirection(ENUM_POSITION_TYPE dir, string reason)
       DeleteGrid(dir);
    if(reason != "")
       Print(reason, dir == POSITION_TYPE_BUY ? " [多头]" : " [空头]");
+   NotifyCloseDirection(dir, b, reason);
 }
 
 //==================================================================
@@ -878,6 +932,10 @@ void CloseDirection(ENUM_POSITION_TYPE dir, string reason)
 //==================================================================
 void CloseAllPositions(string reason)
 {
+   BasketInfo buy, sell;
+   GatherBasket(POSITION_TYPE_BUY,  buy);
+   GatherBasket(POSITION_TYPE_SELL, sell);
+
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       if(!g_posInfo.SelectByIndex(i)) continue;
@@ -894,6 +952,7 @@ void CloseAllPositions(string reason)
      }
    if(reason != "")
       Print(reason);
+   NotifyCloseAll(buy, sell, reason);
 }
 
 //==================================================================
